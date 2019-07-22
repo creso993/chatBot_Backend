@@ -3,6 +3,7 @@ const chatRoutes = express.Router();
 const wit = require('../model/Wit');
 const fetch = require('node-fetch');
 const { Wit } = require('node-wit');
+const request = require('request');
 const client = new Wit({
     accessToken: process.env.WIT_ACCESS_TOKEN,
   });
@@ -14,16 +15,13 @@ async function result(){
   return question;
 }
 async function getResFromWit(data){
-  console.log("hello");
   let witRes ;
   let stringquery = await Training.find({question:{$regex: new RegExp('^' + data, 'i')}});
   
   if (stringquery.length===1 && stringquery[0].question.toLowerCase() === data.toLowerCase()){
-    console.log(stringquery);
     return stringquery[0].answer;
   }
   await client.message(data).then(r=>witRes = r);
-  
   let listEntity =[];
   if (Object.keys(witRes.entities).length===0){
     return "";
@@ -33,11 +31,11 @@ async function getResFromWit(data){
       listEntity.push(key);
     }
   }); 
-  let params = listEntity.join(',');
+  
+  let params = listEntity.sort().join(',');
   let dbquerry = await Training.find({intent: witRes.entities.hasOwnProperty('intent')?witRes.entities.intent[0].value:"",params:params});
   let listAnswer = JSON.parse(JSON.stringify(dbquerry));
   if (dbquerry.length>0){
-    console.log(dbquerry);
     if(params.length>0){
      for (let item of listEntity){
         listAnswer = listAnswer.filter(entity=>entity.entities[item].sort().join(',').toLowerCase()===witRes.entities[item].map(i=>{return i.value}).sort().join(',').toLowerCase())
@@ -121,12 +119,6 @@ chatRoutes.route('/sendtraining').get(async function (req, res) {
           ...tempentity
         ],
         }
-        console.log([{
-          "entity":"intent",
-          "value":object.intent
-        },
-          ...tempentity
-        ]);
         let sende = new wit();
         confirm = await sende.trainingQuestion(object.question,[{
           "entity":"intent",
@@ -134,7 +126,6 @@ chatRoutes.route('/sendtraining').get(async function (req, res) {
         },
           ...tempentity
         ])
-        console.log(confirm);
         return confirm.sent?true:false;
     /*await fetch('https://api.wit.ai/samples?v=201703077', {
         method: 'POST',
@@ -159,7 +150,6 @@ chatRoutes.route('/message').post(async function(req,res){
 chatRoutes.route('/updateTraining/:id').post(async function(req,res){
     let training = req.body;
     let confirm = await sender(training);
-    console.log(req.params.id);
     if (confirm){
       Training.findById(req.params.id,function(err,train){
         if(!train){
@@ -207,16 +197,11 @@ chatRoutes.route('/delete/:id').get(function(req,res){
  })
 chatRoutes.route('/getDefaultAnswer').post(async function(req,res){
   let stringquery = await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
-  console.log('string querrrrrryyy');
-    console.log(stringquery);
-    
   if (stringquery.length===1 && stringquery[0].question.toLowerCase() === req.body.question.toLowerCase()){
     
     return res.json({answer:stringquery[0].answer,default_answer:stringquery[0].default_answer});
   }
   let sametype = await Training.find({intent:req.body.intent,params:req.body.params})
-  console.log("get default answer");
-  console.log(sametype)
   if (sametype.length>0){
     return res.json({answer:"",default_answer:sametype[0].default_answer})
   }
@@ -248,19 +233,17 @@ chatRoutes.route('/listEntity').get(async function(req,res){
   let otherentities =[];
   //otherentities = otherentities.map(item=>{return {name: item.name, doc: item.doc,value:item.value}})
   res.json({
-    entities:entities.filter(item=>!item.includes('wit')).map(item=>{return item.charAt(0).toUpperCase() + item.slice(1)}),
-    intent:intent.values.map(item=>{return item.value}),
+    entities:entities.filter(item=>!item.includes('wit')).map(item=>{return item.charAt(0).toUpperCase() + item.slice(1)}).sort(),
+    intent:intent.values.map(item=>{return item.value}).sort(),
     //other:otherentities
   });
 })
 chatRoutes.route('/findSameTraining').post(async function(req,res){
-    console.log(req);
     let resp;
     let witRes ;
     let stringquery = await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
     
     if (stringquery.length===1 && stringquery[0].question.toLowerCase() === req.body.question.toLowerCase()){
-      console.log(stringquery);
       stringquery[0].flag = true;
       return res.json(stringquery[0]);
     }
@@ -276,11 +259,10 @@ chatRoutes.route('/findSameTraining').post(async function(req,res){
         listEntity.push(key);
       }
     }); 
-    let params = listEntity.join(',');
+    let params = listEntity.sort().join(',');
     let dbquerry = await Training.find({intent: witRes.entities.hasOwnProperty('intent')?witRes.entities.intent[0].value:"",params:params});
     let listAnswer = JSON.parse(JSON.stringify(dbquerry));
     if (dbquerry.length>0){
-      console.log(dbquerry);
       if(params.length>0){
        for (let item of listEntity){
           listAnswer = listAnswer.filter(entity=>entity.entities[item].sort().join(',').toLowerCase()===witRes.entities[item].map(i=>{return i.value}).sort().join(',').toLowerCase())
@@ -311,16 +293,128 @@ chatRoutes.route('/findSameTraining').post(async function(req,res){
 })
 chatRoutes.route('/updateEntities/:id').post(async function(req,res){
     let getwit = new wit();
-    console.log(req);
     let ans = await getwit.updateEntity(req.body.name.toLowerCase(),req.params.id);
     return res.json(ans?'Cập nhật thành công.':'Cập nhật thất bại.')
 
 })
 chatRoutes.route('/deleteEntities/:id').get(async function(req,res){
   let getwit = new wit();
-  console.log(req.params.id);
   let ans = await getwit.deleteEntity(req.params.id);
   return res.json(ans?'Cập nhật thành công.':'Cập nhật thất bại.')
 
 })
+
+
+chatRoutes.route('/addEntities/').post(async function(req,res){
+  let getwit = new wit();
+  let ans = await getwit.createEntity(req.body.id);
+  return res.json(ans?'Thêm entity thành công.':'Thêm entity thất bại.');
+
+})
+
+chatRoutes.route('/addIntent/').post(async function(req,res){
+  let getwit = new wit();
+  let ans = await getwit.createIntent(req.body.id);
+  return res.json(ans?`Thêm intent ${req.body.id} thành công.`:`Thêm intent ${req.body.id} thất bại.`)
+
+})
+
+chatRoutes.route('/updateIntent/:id').post(async function(req,res){
+  let checkDB = await Training.find({intent:{$regex: new RegExp('^' + req.params.id, 'i')}});
+  if(checkDB.length > 0){
+    return res.json(`Không thể cập nhật intent ${req.params.id} do intent này đang được sử dụng.`);
+  }
+  else{
+    let getwit = new wit();
+    let ans = await getwit.updateIntent(req.body.name,req.params.id);
+    return res.json(ans?`Cập nhật intent ${req.params.id} -> ${req.body.name} thành công.`:`Cập nhật intent ${req.params.id} thất bại.`);
+  }
+})
+chatRoutes.route('/deleteIntent/:id').get(async function(req,res){
+  let checkDB = await Training.find({intent:{$regex: new RegExp('^' + req.params.id, 'i')}});
+  if(checkDB.length > 0){
+    return res.json(`Không thể xoá intent ${req.params.id} do intent này đang được sử dụng.`);
+  }
+  else{
+    let getwit = new wit();
+    let ans = await getwit.deleteIntent(req.params.id);
+    return res.json(ans?`Xóa intent ${req.params.id}  thành công.`:`Xóa intent ${req.params.id} thất bại.`);
+  }
+})
+
+chatRoutes.route('/getQuestion/').get(async function(req,res){
+  Training.find(function(err,trains){
+    if(err){
+      res.json("Có lỗi xảy ra với database");
+    }
+    else{
+      res.json(trains);
+    }
+  });
+
+})
+
+chatRoutes.route('/deleteQuestion/:id').post(async function(req,res){
+  let getwit = new wit();
+  let ans = await getwit.deleteQuestion(req.body.name);
+  if(ans){
+  Training.findByIdAndRemove(req.params.id,function(err,trains){
+    if(err){
+      res.json("Có lỗi xảy ra với database");
+    }
+    else{
+      res.json(`Đã xóa thành công câu hỏi '${req.body.name}'`);
+    }
+  });}
+  else{
+    res.json("Có lỗi xảy ra với server Wit.ai");
+  }
+
+})
+
+chatRoutes.route('/webhook').get(function(req, res) {
+  if (req.query['hub.verify_token'] === 'Son!13879428') {
+    res.send(req.query['hub.challenge']);
+  }
+  res.send('Error, wrong validation token');
+});
+
+chatRoutes.route('/webhook').post(async function(req, res) {
+  var entries = req.body.entry;
+  for (var entry of entries) {
+    var messaging = entry.messaging;
+    for (var message of messaging) {
+      var senderId = message.sender.id;
+      if (message.message) {
+        // If user send text
+        if (message.message.text) {
+          var text = message.message.text;
+
+          let tempres = await getResFromWit(text);
+          sendMessage(senderId, tempres);
+        }
+      }
+    }
+  }
+
+  res.status(200).send("OK");
+});
+
+function sendMessage(senderId, message) {
+  request({
+    url: 'https://graph.facebook.com/v2.6/me/messages',
+    qs: {
+      access_token: process.env.FB_TOKEN , //"EAAGvgiCMDAsBAII22Ub9d6fZC16GmKZApCxy3Y6UhN3iDrcEFo6atMrXtSvqUPtnGzcJ4Ai5UsHIH5gduJjAJrVTEjlUOmOsjevSpRbu5dXilNrVuZBkelnXzW5uVfmCtqQTjrTc5iMTBejnE727UiPXL2EceZCxPRwTpAi8Bk1SCbetIaSD4qihRwysMBUZD",
+    },
+    method: 'POST',
+    json: {
+      recipient: {
+        id: senderId
+      },
+      message: {
+        text: message
+      },
+    }
+  });
+}
 module.exports = chatRoutes;
