@@ -15,13 +15,24 @@ async function result(){
   return question;
 }
 async function getResFromWit(data){
+  console.log("hello");
   let witRes ;
-  let stringquery = await Training.find({question:{$regex: new RegExp('^' + data, 'i')}});
-  
-  if (stringquery.length===1 && stringquery[0].question.toLowerCase() === data.toLowerCase()){
-    return stringquery[0].answer;
+  let stringquery = await Training.find({question:{$regex: new RegExp('^' + data,'i')}});
+  console.log(stringquery);
+
+  if (stringquery.length>0){
+    for (let item of stringquery){
+      if (item.question.toLowerCase() === data.toLowerCase()){
+        return item.answer;
+      }
+    }
   }
+  /*if (stringquery.length===1 && stringquery[0].question.toLowerCase() === data.toLowerCase()){
+    console.log(stringquery);
+    return stringquery[0].answer;
+  }*/
   await client.message(data).then(r=>witRes = r);
+  
   let listEntity =[];
   if (Object.keys(witRes.entities).length===0){
     return "";
@@ -31,11 +42,11 @@ async function getResFromWit(data){
       listEntity.push(key);
     }
   }); 
-  
   let params = listEntity.sort().join(',');
   let dbquerry = await Training.find({intent: witRes.entities.hasOwnProperty('intent')?witRes.entities.intent[0].value:"",params:params});
   let listAnswer = JSON.parse(JSON.stringify(dbquerry));
   if (dbquerry.length>0){
+    console.log(dbquerry);
     if(params.length>0){
      for (let item of listEntity){
         listAnswer = listAnswer.filter(entity=>entity.entities[item].sort().join(',').toLowerCase()===witRes.entities[item].map(i=>{return i.value}).sort().join(',').toLowerCase())
@@ -64,12 +75,12 @@ async function getResFromWit(data){
 
 
 chatRoutes.route('/send').post(async function (req, res) {
-    let training = req.body;
-    let confirm = await sender(training);
+  let confirm = await sender(req.body);
     if (confirm){
-      training = new Training(req.body);
+      let training = new Training(req.body);
       training.save()
         .then(train => {
+          console.log(train);
             res.json({
                 status:true,
                 message:"Lưu thành công"
@@ -88,12 +99,12 @@ chatRoutes.route('/send').post(async function (req, res) {
         message:"Có lỗi với server wit ai"
       })
     }
-});
-chatRoutes.route('/sendtraining').get(async function (req, res) {
+})
+chatRoutes.route('/sendtraining').post(async function (req, res) {
    let a = await sender(req,res);
 })
- async function sender(object){
-   let confirm = false;
+async function sender(object){
+    let confirm = false;
     let a={entity:"",value:""};
   
     let entities = object.entities;
@@ -126,6 +137,8 @@ chatRoutes.route('/sendtraining').get(async function (req, res) {
         },
           ...tempentity
         ])
+        console.log("pppppppppppppppppoooooooooooooooooooooopppppppppppppppppppppppppppppppppppp");
+        console.log(confirm);
         return confirm.sent?true:false;
     /*await fetch('https://api.wit.ai/samples?v=201703077', {
         method: 'POST',
@@ -150,12 +163,13 @@ chatRoutes.route('/message').post(async function(req,res){
 chatRoutes.route('/updateTraining/:id').post(async function(req,res){
     let training = req.body;
     let confirm = await sender(training);
+
     if (confirm){
       Training.findById(req.params.id,function(err,train){
         if(!train){
             res.json({
               status:false,
-              message:"Lưu thất bại"
+              message:"Cập nhật thất bại"
           });
         }
         else{
@@ -168,13 +182,13 @@ chatRoutes.route('/updateTraining/:id').post(async function(req,res){
            train.save().then(train => {
                 res.json({
                     status:true,
-                    message:"Lưu thành công"
+                    message:"Cập nhật thành công"
                 });
             })
             .catch(err => {
                 res.json({
                     status:false,
-                    message:"Lưu thất bại"
+                    message:"Cập nhật thất bại"
                 });
             });
         }
@@ -197,11 +211,14 @@ chatRoutes.route('/delete/:id').get(function(req,res){
  })
 chatRoutes.route('/getDefaultAnswer').post(async function(req,res){
   let stringquery = await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
+ 
+    
   if (stringquery.length===1 && stringquery[0].question.toLowerCase() === req.body.question.toLowerCase()){
     
     return res.json({answer:stringquery[0].answer,default_answer:stringquery[0].default_answer});
   }
   let sametype = await Training.find({intent:req.body.intent,params:req.body.params})
+  
   if (sametype.length>0){
     return res.json({answer:"",default_answer:sametype[0].default_answer})
   }
@@ -209,23 +226,7 @@ chatRoutes.route('/getDefaultAnswer').post(async function(req,res){
     return res.json({answer:"",default_answer:""})
   }
 })
-chatRoutes.route('/tss').get(async function(req,res){
-  let wk= new wit();
-  wk.updateEntity("temptest","temptest1");
-  //let arrayEntities = await wk.infoEntity('intent');
-  //console.log(arrayEntities);
-  /*let entities = await wk.entities();
-  entities = entities.filter(item=>!item.includes('wit'));
-  let otherentities =[];
-  for (let item of entities){
-    let temp = await wk.infoEntity(item);
-    otherentities.push(temp);
-  }
-  otherentities = otherentities.map(item=>{return {name: item.name, doc: item.doc,value:item.value}})
-  //let otherentities = await entities.map(item=>{return await wk.infoEntity(item)});
-  console.log(otherentities);*/
-  res.json("arrayEntities");
-})
+
 chatRoutes.route('/listEntity').get(async function(req,res){
   let getwit = new wit();
   let entities = await getwit.entities();
@@ -233,19 +234,21 @@ chatRoutes.route('/listEntity').get(async function(req,res){
   let otherentities =[];
   //otherentities = otherentities.map(item=>{return {name: item.name, doc: item.doc,value:item.value}})
   res.json({
-    entities:entities.filter(item=>!item.includes('wit')).map(item=>{return item.charAt(0).toUpperCase() + item.slice(1)}).sort(),
+    entities:entities.filter(item=>!item.includes('wit')).map(item=>{return item.charAt(0).toUpperCase() + item.slice(1)}),
     intent:intent.values.map(item=>{return item.value}).sort(),
     //other:otherentities
   });
 })
 chatRoutes.route('/findSameTraining').post(async function(req,res){
+    
     let resp;
     let witRes ;
     let stringquery = await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
     
     if (stringquery.length===1 && stringquery[0].question.toLowerCase() === req.body.question.toLowerCase()){
-      stringquery[0].flag = true;
-      return res.json(stringquery[0]);
+      let returnQuery = JSON.parse(JSON.stringify(stringquery[0]));
+      returnQuery.flag = true;
+      return res.json(returnQuery);
     }
 
     await client.message(req.body.question).then(r=>witRes = r);
@@ -259,10 +262,11 @@ chatRoutes.route('/findSameTraining').post(async function(req,res){
         listEntity.push(key);
       }
     }); 
-    let params = listEntity.sort().join(',');
+    let params = listEntity.join(',');
     let dbquerry = await Training.find({intent: witRes.entities.hasOwnProperty('intent')?witRes.entities.intent[0].value:"",params:params});
     let listAnswer = JSON.parse(JSON.stringify(dbquerry));
     if (dbquerry.length>0){
+      
       if(params.length>0){
        for (let item of listEntity){
           listAnswer = listAnswer.filter(entity=>entity.entities[item].sort().join(',').toLowerCase()===witRes.entities[item].map(i=>{return i.value}).sort().join(',').toLowerCase())
@@ -292,21 +296,61 @@ chatRoutes.route('/findSameTraining').post(async function(req,res){
     }
 })
 chatRoutes.route('/updateEntities/:id').post(async function(req,res){
+  let oldentity = req.params.id.toLowerCase();
+  let newentity = req.body.name.toLowerCase();
+  let checkDB = await Training.find({params: {$regex: new RegExp('.*' + oldentity+'.*', 'i')}},function(err,training){
+    if (training.length<1){
+        return ;
+    }
+    else{
+        training.map(async (item)=>{
+        console.log(training);
+        let newEntities = JSON.parse(JSON.stringify(item.entities)) ;
+        delete Object.assign(newEntities, {[newentity]: newEntities[oldentity] })[oldentity];
+        console.log(newEntities);
+        let listEntity=[];
+        Object.keys(newEntities).forEach(function(key, idx) {
+          listEntity.push(key);
+        }); 
+        item.entities = newEntities;
+        item.params = listEntity.sort().join(',');
+        await item.save().then(res=>console.log(res));
+      })
+      /*let newEntities = [];
+      console.log(training);
+      newEntities[req.body.name.toLowerCase()] = training[0].entities[req.params.id.toLowerCase()];
+      delete training[0].entities[req.params.id];
+      console.log(training);
+      console.log(req.params.id);
+      console.log(req.body.name);*/
+      //training.map(async (item)=>{
+      //item.intent=req.body.name.toLowerCase();
+      //await item.save();
+      }})
+   
     let getwit = new wit();
     let ans = await getwit.updateEntity(req.body.name.toLowerCase(),req.params.id);
-    return res.json(ans?'Cập nhật thành công.':'Cập nhật thất bại.')
-
+    return res.json(ans?'Cập nhật thành công.':'Cập nhật thất bại.'); 
 })
 chatRoutes.route('/deleteEntities/:id').get(async function(req,res){
-  let getwit = new wit();
-  let ans = await getwit.deleteEntity(req.params.id);
-  return res.json(ans?'Cập nhật thành công.':'Cập nhật thất bại.')
+  let checkDB = await Training.find({params:{$regex: new RegExp('^' + req.params.id, 'i')}});
+  console.log(checkDB);
+  if(checkDB.length > 0){
+    return res.json(`Không thể xóa entity ${req.params.id} do entity này đang được sử dụng.`);
+  }
+  else {
+    let getwit = new wit();
+    console.log(req.params.id);
+    let ans = await getwit.deleteEntity(req.params.id);
+    return res.json(ans?'Xóa thành công.':'Xóa thất bại.');
+  }
+  
 
 })
-
 
 chatRoutes.route('/addEntities/').post(async function(req,res){
   let getwit = new wit();
+  console.log(req.params.id);
   let ans = await getwit.createEntity(req.body.id);
   return res.json(ans?'Thêm entity thành công.':'Thêm entity thất bại.');
 
@@ -314,34 +358,42 @@ chatRoutes.route('/addEntities/').post(async function(req,res){
 
 chatRoutes.route('/addIntent/').post(async function(req,res){
   let getwit = new wit();
+  console.log(req.params.id);
   let ans = await getwit.createIntent(req.body.id);
   return res.json(ans?`Thêm intent ${req.body.id} thành công.`:`Thêm intent ${req.body.id} thất bại.`)
 
 })
 
 chatRoutes.route('/updateIntent/:id').post(async function(req,res){
-  let checkDB = await Training.find({intent:{$regex: new RegExp('^' + req.params.id, 'i')}});
-  if(checkDB.length > 0){
-    return res.json(`Không thể cập nhật intent ${req.params.id} do intent này đang được sử dụng.`);
-  }
-  else{
+  let checkDB = await Training.find({intent:{$regex: new RegExp('^' + req.params.id, 'i')}},function(err,training){
+    if (training.length<1){
+      return;
+    }
+    else{
+      training.map(async (item)=>{
+      item.intent=req.body.name.toLowerCase();
+      await item.save();
+      })
+      }});
     let getwit = new wit();
+    console.log(req.params.id);
     let ans = await getwit.updateIntent(req.body.name,req.params.id);
     return res.json(ans?`Cập nhật intent ${req.params.id} -> ${req.body.name} thành công.`:`Cập nhật intent ${req.params.id} thất bại.`);
-  }
-})
+    });
+
 chatRoutes.route('/deleteIntent/:id').get(async function(req,res){
   let checkDB = await Training.find({intent:{$regex: new RegExp('^' + req.params.id, 'i')}});
+  console.log(checkDB);
   if(checkDB.length > 0){
     return res.json(`Không thể xoá intent ${req.params.id} do intent này đang được sử dụng.`);
   }
   else{
     let getwit = new wit();
+    console.log(req.params.id);
     let ans = await getwit.deleteIntent(req.params.id);
     return res.json(ans?`Xóa intent ${req.params.id}  thành công.`:`Xóa intent ${req.params.id} thất bại.`);
   }
 })
-
 chatRoutes.route('/getQuestion/').get(async function(req,res){
   Training.find(function(err,trains){
     if(err){
@@ -372,7 +424,7 @@ chatRoutes.route('/deleteQuestion/:id').post(async function(req,res){
 
 })
 
-chatRoutes.route('/webhook').get(function(req, res) {
+chatRoutes.route('/webhook', function(req, res) {
   if (req.query['hub.verify_token'] === 'Son!13879428') {
     res.send(req.query['hub.challenge']);
   }

@@ -12,7 +12,7 @@ const chatRoute = require('./route/chat.route');
 
 app.use(express.static("public"));
 mongoose.Promise = global.Promise;
-mongoose.connect(config.DB, { useNewUrlParser: true }).then(
+mongoose.connect(config.DB, { useNewUrlParser: true, useFindAndModify: true }).then(
     () => {console.log('Database is connected') },
     err => { console.log('Can not connect to the database'+ err)}
 );
