@@ -13,7 +13,7 @@ class Wit {
     this.intent = "intent";
 
     console.log("Create WitClient >>>");
-    axios.defaults.headers.common["Authorization"] = "Bearer " + 'AAWV75Z63KG4YVO42262OB4D6QGZTDOK';
+    axios.defaults.headers.common["Authorization"] = "Bearer " + process.env.WIT_ACCESS_TOKEN;
     axios.defaults.headers.post["Content-Type"] = "application/json";
   }
 

@@ -1,9 +1,14 @@
 const express = require('express');
+const elasticsearch = require('elasticsearch');
 const chatRoutes = express.Router();
 const wit = require('../model/Wit');
 const fetch = require('node-fetch');
 const { Wit } = require('node-wit');
 const request = require('request');
+const elastic = new elasticsearch.Client({
+    host: 'localhost:9200',
+    log: 'trace'
+  });
 const client = new Wit({
     accessToken: process.env.WIT_ACCESS_TOKEN,
   });
@@ -17,12 +22,28 @@ async function result(){
 async function getResFromWit(data){
   console.log("hello");
   let witRes ;
-  let stringquery = await Training.find({question:{$regex: new RegExp('^' + data,'i')}});
+  let stringquery ; //await Training.find({question:{$regex: new RegExp('^' + data,'i')}});
+  await elastic.search({
+    index: 'chatbot',
+    type: 'training',
+    body: {
+      query: {
+        match: {
+          question: data
+        }
+      }
+    }
+  }).then(function (resp) {
+     stringquery = resp.hits.hits.map(item=>{return item._source});
+  }, function (err) {
+      console.trace(err.message);
+  });
   console.log(stringquery);
 
   if (stringquery.length>0){
     for (let item of stringquery){
       if (item.question.toLowerCase() === data.toLowerCase()){
+          console.log("this is a person not a cat");
         return item.answer;
       }
     }
@@ -210,12 +231,38 @@ chatRoutes.route('/delete/:id').get(function(req,res){
     })
  })
 chatRoutes.route('/getDefaultAnswer').post(async function(req,res){
-  let stringquery = await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
+  /*let stringquery = await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
  if (stringquery.length>0){
     for (let item of stringquery){
       if (item.question.toLowerCase() === req.body.question.toLowerCase()){
         return res.json({answer:item.answer,default_answer:item.default_answer});
-        return item.answer;
+ 
+      }
+    }
+  }*/
+  let stringquery ; //await Training.find({question:{$regex: new RegExp('^' + data,'i')}});
+  await elastic.search({
+    index: 'chatbot',
+    type: 'training',
+    body: {
+      query: {
+        match: {
+          question: req.body.question
+        }
+      }
+    }
+  }).then(function (resp) {
+     stringquery = resp.hits.hits.map(item=>{return item._source});
+  }, function (err) {
+      console.trace(err.message);
+  });
+  console.log(stringquery);
+
+  if (stringquery.length>0){
+    for (let item of stringquery){
+      if (item.question.toLowerCase() === req.body.question.toLowerCase()){
+          console.log("this is a person not a cat");
+        return res.json({answer:item.answer,default_answer:item.default_answer});
       }
     }
   }
@@ -224,7 +271,26 @@ chatRoutes.route('/getDefaultAnswer').post(async function(req,res){
     
     return res.json({answer:stringquery[0].answer,default_answer:stringquery[0].default_answer});
   }*/
-  let sametype = await Training.find({intent:req.body.intent,params:req.body.params})
+  let sametype ;
+  //= await Training.find({intent:req.body.intent,params:req.body.params})
+  await elastic.search({
+    index: 'chatbot',
+    type: 'training',
+    body: {
+        query:{
+            dis_max:{
+                queries: [
+                    {match: {params:req.body.params}},
+                    {match: { intent:req.body.intent}}
+                ]
+            }
+        }
+    }
+  }).then(function (resp) {
+    sametype = resp.hits.hits.map(item=>{return item._source});
+  }, function (err) {
+      console.trace(err.message);
+  });
   
   if (sametype.length>0){
     return res.json({answer:"",default_answer:sametype[0].default_answer})
@@ -250,9 +316,37 @@ chatRoutes.route('/findSameTraining').post(async function(req,res){
     
     let resp;
     let witRes ;
-    let stringquery = await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
-    
-   if (stringquery.length>0){
+    let stringquery //= await Training.find({question:{$regex: new RegExp('^' + req.body.question, 'i')}});
+  
+  await elastic.search({
+    index: 'chatbot',
+    type: 'training',
+    body: {
+      query: {
+        match: {
+          question: req.body.question
+        }
+      }
+    }
+  }).then(function (resp) {
+     stringquery = resp.hits.hits.map(item=>{return item._source});
+  }, function (err) {
+      console.trace(err.message);
+  });
+  console.log(stringquery);
+
+  if (stringquery.length>0){
+    for (let item of stringquery){
+      if (item.question.toLowerCase() === req.body.question.toLowerCase()){
+          console.log("this is a heo");
+        let returnQuery = JSON.parse(JSON.stringify(item));
+        returnQuery.flag = true;
+        return res.json(returnQuery);
+
+      }
+    }
+  }
+  /* if (stringquery.length>0){
     for (let item of stringquery){
       if (item.question.toLowerCase() === req.body.question.toLowerCase()){
         let returnQuery = JSON.parse(JSON.stringify(item));
@@ -261,7 +355,7 @@ chatRoutes.route('/findSameTraining').post(async function(req,res){
 
       }
     }
-  }
+  }*/
     /*if (stringquery.length===1 && stringquery[0].question.toLowerCase() === req.body.question.toLowerCase()){
       let returnQuery = JSON.parse(JSON.stringify(stringquery[0]));
       returnQuery.flag = true;
